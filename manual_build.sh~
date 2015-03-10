@@ -1,0 +1,1 @@
+g++    -O3 -g `root-config --cflags` -I $ROOFITSYS/include  -I/usr/lib/x86_64-redhat-linux5E/include/ mvaROC.C  -o mvaROC.exe `root-config --libs`  -B/usr/lib/x86_64-redhat-linux5E/lib64/ -L/usr/lib/x86_64-redhat-linux5E/lib64/ -lc_nonshared -L $ROOFITSYS/lib -lRooFit  CPlot_cc.so KStyle_cc.so

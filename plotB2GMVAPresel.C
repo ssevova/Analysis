@@ -1,0 +1,865 @@
+//================================================================================================
+//
+// Plot various distributions in semi-leptonic ttbar events
+//
+//________________________________________________________________________________________________
+
+#if !defined(__CINT__) || defined(__MAKECINT__)
+#include <TROOT.h>                    // access to gROOT, entry point to ROOT system
+#include <TSystem.h>                  // interface to OS
+#include <TStyle.h>                   // class to handle ROOT plotting styles
+#include <TFile.h>                    // file handle class
+#include <TTree.h>                    // class to access ntuples
+#include <TH1D.h>                     // 1D histogram class
+#include <TLorentzVector.h>           // 4-vector class
+#include <TVector2.h>                 // 2-vector class
+#include <vector>                     // STL vector class
+#include <iostream>                   // standard I/O
+#include <iomanip>                    // functions to format standard I/O
+#include <fstream>                    // functions for file I/O
+#include <string>                     // C++ string class
+#include <cmath>                      // C++ math library
+#include <cassert>
+
+#include <TMVA/Reader.h>
+
+#include "CPlot.hh"                   // helper class for plots
+#include "KStyle.hh"                  // style settings for drawing
+#include "CSample.hh"                 // helper class to manage samples
+#endif
+
+using namespace std;
+
+
+//=== FUNCTION DECLARATIONS ======================================================================================
+
+double deltaPhi(const double phi1, const double phi2) {
+  double result = phi1 - phi2;
+  if     (result >  TMath::Pi()) { result = result - 2*TMath::Pi(); }
+  else if(result < -TMath::Pi()) { result = result + 2*TMath::Pi(); }
+  return result;
+}
+
+// make "standard" plot
+void makePlot(TCanvas *c, const string outname, const string xlabel, const string ylabel,
+              const vector<TH1D*>& histv, const vector<CSample*>& samplev, TH1D* hExp, TH1D* hRatio,
+              const int ilep, const double lumi, const bool doLogy=false, const double legdx=0, const double legdy=0,
+              const double ymin=-1, const double ymax=-1);
+
+TH1D* makeRatioHist(TH1D* hData, TH1D* hMC, const string name);
+
+double getEleTrgSF(const double pt, const double eta);
+double getEleSelSF(const double pt, const double eta);
+double getMuonTrgSF(const double eta);
+double getMuonSelSF(const double eta);
+
+
+//=== MAIN MACRO =================================================================================================
+// if  compiling through root ...
+void plotB2GMVAPresel() 
+
+// if compiling with g++
+//int  main()
+
+{
+  //--------------------------------------------------------------------------------------------------------------
+  // Settings
+  //==============================================================================================================
+
+  string outputDir("B2GMVAPreselPlots");
+  const string outfilename("mvatestingbits.root");
+
+  //wmva weights
+  const string weightfile_lowpt("/tthome/ssevova/Analysis/01d/CMSSW_5_3_14_patch2/src/DMSAna/TTbar/topmva/wmva_weights/wtraining_lowpt_cen.root_BDTG.weights.xml");
+  const string weightfile_highpt("/tthome/ssevova/Analysis/01d/CMSSW_5_3_14_patch2/src/DMSAna/TTbar/topmva/wmva_weights/wtraining_highpt_cen.root_BDTG.weights.xml");
+
+  //
+  // Cuts
+  //
+
+  const unsigned int NJETS_CUT  = 3;
+  const unsigned int NBJETS_CUT = 1;
+  const double       MET_CUT    = 160;
+  const double       WMASSLOW    = 60;
+  const double       WMASSHIGH   = 110;
+  const double       TOPMASSLOW  = 100;
+  const double       TOPMASSHIGH = 300;
+  
+  // Create output directory
+  gSystem->mkdir(outputDir.c_str(), true);
+  CPlot::sOutDir = outputDir;
+
+  //
+  // samples
+  // Note: macro assumes samplev[0] is data
+  //
+  vector<CSample*> samplev;
+
+  // data
+  samplev.push_back(new CSample("data",0,0));
+  samplev.back()->fnamev.push_back("../baconbits/SingleElectron_2012-22Jan2013_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/SingleMu_2012-22Jan2013_b2gv2bits.root");
+           
+  // dibosons
+  samplev.push_back(new CSample("diboson",kRed-6,kRed+2));
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_WW_TuneZ2star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_WZJetsTo3LNu_TuneZ2_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_WZJetsTo2L2Q_TuneZ2star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_WZJetsTo2QLNu_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_ZZJetsTo2Q2Nu_TuneZ2star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_ZZJetsTo2L2Q_TuneZ2star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_ZZJetsTo2L2Nu_TuneZ2star_b2gv2bits.root");
+                                  
+  // Z+jets
+  samplev.push_back(new CSample("Z+jets",kOrange-2,kOrange-3));
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_DY0JetsToLL_M-50_TuneZ2Star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_DY1JetsToLL_M-50_TuneZ2Star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_DY2JetsToLL_M-50_TuneZ2Star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_DY3JetsToLL_M-50_TuneZ2Star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_DY4JetsToLL_M-50_TuneZ2Star_b2gv2bits.root");
+                                                             
+  // single top
+  samplev.push_back(new CSample("single t",kAzure-8,kBlue-6));
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_T_tW-channel-DR_TuneZ2star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_Tbar_tW-channel-DR_TuneZ2star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_T_s-channel_TuneZ2star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_Tbar_s-channel_TuneZ2star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_T_t-channel_TuneZ2star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_Tbar_t-channel_TuneZ2star_b2gv2bits.root");
+
+  // W+jets
+  samplev.push_back(new CSample("W+jets",kOrange+7,kOrange+10));
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_W0JetsToLNu_TuneZ2Star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_W1JetsToLNu_TuneZ2Star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_W2JetsToLNu_TuneZ2Star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_W3JetsToLNu_TuneZ2Star_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_W4JetsToLNu_TuneZ2Star_b2gv2bits.root");
+                                                                               
+  // ttbar
+  samplev.push_back(new CSample("t#bar{t}",kGreen+2,kGreen+3));
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_TTJets_FullLeptMGDecays_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_TTJets_SemiLeptMGDecays_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_TTJets_HadronicMGDecays_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_TTGJets_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_TTWJets_b2gv2bits.root");
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_TTZJets_b2gv2bits.root");
+
+  // DM
+  samplev.push_back(new CSample("DM 1 GeV",kMagenta+2,kMagenta+3));
+  samplev.back()->fnamev.push_back("../baconbits/Summer12_TTChiChiJets_M-1_TuneZ2star_b2gv2bits.root");
+
+
+  // integrated luminosity to scale MC
+  const double LUMI = 19.7;
+  
+  // histograms for various corrections
+  const string puWeightFilename("/tthome/ssevova/Analysis/03/CMSSW_5_3_14_patch2/src/DMSAna/Utils/data/PUWeights_2012.root");
+  const string muonEffFilename("");
+  const string eleEffFilename("");
+  
+
+  //--------------------------------------------------------------------------------------------------------------
+  // Main analysis code
+  //==============================================================================================================
+
+  //
+  // Declare histograms
+  //  
+
+  vector<double> neventsv[3];
+  vector<TH1D*> hMETv[3], hMTv[3], hMT2Wv[3], hDPhiv[3];
+  vector<TH1D*> hNJetsv[3], hNBJetsv[3], hJet1Etav[3], hJet2Etav[3], hLepEtav[3];
+
+  double neventsMC[3];
+  TH1D *hMETMC[3], *hMTMC[3], *hMT2WMC[3], *hDPhiMC[3];
+  TH1D *hNJetsMC[3], *hNBJetsMC[3], *hJet1EtaMC[3], *hJet2EtaMC[3], *hLepEtaMC[3];
+
+  char hname[100];
+  for(int ilep=0; ilep<3; ilep++) {
+    for(unsigned int isam=0; isam<samplev.size(); isam++) {
+      neventsv[ilep].push_back(0);
+      sprintf(hname,"hMET_%i_%i",ilep,isam);  hMETv[ilep].push_back(new TH1D(hname,"",10,160,560)); hMETv[ilep][isam]->Sumw2();
+      sprintf(hname,"hMT_%i_%i",ilep,isam);   hMTv[ilep].push_back(new TH1D(hname,"",14,0,560));    hMTv[ilep][isam]->Sumw2();
+      sprintf(hname,"hMT2W_%i_%i",ilep,isam); hMT2Wv[ilep].push_back(new TH1D(hname,"",11,80,520)); hMT2Wv[ilep][isam]->Sumw2();
+      sprintf(hname,"hDPhi_%i_%i",ilep,isam); hDPhiv[ilep].push_back(new TH1D(hname,"",16,0,3.2));  hDPhiv[ilep][isam]->Sumw2();
+
+      sprintf(hname,"hNJets_%i_%i",ilep,isam);   hNJetsv[ilep].push_back(new TH1D(hname,"",7,2.5,9.5));    hNJetsv[ilep][isam]->Sumw2();
+      sprintf(hname,"hNBJets_%i_%i",ilep,isam);  hNBJetsv[ilep].push_back(new TH1D(hname,"",4,0.5,4.5));   hNBJetsv[ilep][isam]->Sumw2();
+      sprintf(hname,"hJet1Eta_%i_%i",ilep,isam); hJet1Etav[ilep].push_back(new TH1D(hname,"",40,-4,4));    hJet1Etav[ilep][isam]->Sumw2();
+      sprintf(hname,"hJet2Eta_%i_%i",ilep,isam); hJet2Etav[ilep].push_back(new TH1D(hname,"",40,-4,4));    hJet2Etav[ilep][isam]->Sumw2();
+      sprintf(hname,"hLepEta_%i_%i",ilep,isam);  hLepEtav[ilep].push_back(new TH1D(hname,"",25,-2.5,2.5)); hLepEtav[ilep][isam]->Sumw2();
+    }
+    neventsMC[ilep]=0;
+    sprintf(hname,"hMETMC_%i",ilep);  hMETMC[ilep]  = new TH1D(hname,"",10,160,560); hMETMC[ilep]->Sumw2();
+    sprintf(hname,"hMTMC_%i",ilep);   hMTMC[ilep]   = new TH1D(hname,"",14,0,560);   hMTMC[ilep]->Sumw2();
+    sprintf(hname,"hMT2WMC_%i",ilep); hMT2WMC[ilep] = new TH1D(hname,"",11,80,520);  hMT2WMC[ilep]->Sumw2();
+    sprintf(hname,"hDPhiMC_%i",ilep); hDPhiMC[ilep] = new TH1D(hname,"",16,0,3.2);   hDPhiMC[ilep]->Sumw2();
+
+    sprintf(hname,"hNJetsMC_%i",ilep);   hNJetsMC[ilep]   = new TH1D(hname,"",7,2.5,9.5);   hNJetsMC[ilep]->Sumw2();
+    sprintf(hname,"hNBJetsMC_%i",ilep);  hNBJetsMC[ilep]  = new TH1D(hname,"",4,0.5,4.5);   hNBJetsMC[ilep]->Sumw2();
+    sprintf(hname,"hJet1EtaMC_%i",ilep); hJet1EtaMC[ilep] = new TH1D(hname,"",40,-4,4);     hJet1EtaMC[ilep]->Sumw2();
+    sprintf(hname,"hJet2EtaMC_%i",ilep); hJet2EtaMC[ilep] = new TH1D(hname,"",40,-4,4);     hJet2EtaMC[ilep]->Sumw2();
+    sprintf(hname,"hLepEtaMC_%i",ilep);  hLepEtaMC[ilep]  = new TH1D(hname,"",25,-2.5,2.5); hLepEtaMC[ilep]->Sumw2();
+  }
+
+  //
+  // variables to read in bacon bits
+  //
+  unsigned int runNum, lumiSec, evtNum;          // event ID
+  unsigned int metfilter;                        // MET filter bits
+  unsigned int npv, npu;                         // number of PV / PU
+  unsigned int njets, nbjets;                    // jet multiplicity
+  float scale1fb;                                // cross section scale factor per 1/fb
+  float evtWeight;                               // event weight (NOT from cross section normalization)
+  float pfmet, pfmetphi, pfmt;                   // PF MET
+  float mT2W;
+  
+  int lepId;                                     // lepton PDG ID
+  TLorentzVector *lepton=0;                      // lepton 4-vector
+
+  float           jet1qgid,     jet2qgid,     jet3qgid,     jet4qgid;      // jet q/g discriminant
+  float           jet1csv,      jet2csv,      jet3csv,      jet4csv;       // jet b-tag value
+  float           jet1pmass,    jet2pmass,    jet3pmass,    jet4pmass;     // jet pruned mass
+  float           jet1q,        jet2q,        jet3q,        jet4q;         // jet charge
+  float           jet1q03,      jet2q03,      jet3q03,      jet4q03;       // jet charge with kappa=0.3
+  float           jet1q2,       jet2q2,       jet3q2,       jet4q2;        // jet charge with kappa=2
+  float           jet1ptD,      jet2ptD,      jet3ptD,      jet4ptD;       // jet pT-D
+  float           jet1flavAlgo, jet2flavAlgo, jet3flavAlgo, jet4flavAlgo;  // jet flavor, algorithmic definition (MC only)
+  float           jet1flavPhys, jet2flavPhys, jet3flavPhys, jet4flavPhys;  // jet flavor, physics definition (MC only)
+  unsigned int    jet1npar,     jet2npar,     jet3npar,     jet4npar;      // jet particle multiplicity
+  TLorentzVector *jet1vec=0,   *jet2vec=0,   *jet3vec=0,   *jet4vec=0;     // jet 4-vector
+  TVector2       *jet1pull=0,  *jet2pull=0,  *jet3pull=0,  *jet4pull=0;    // jet pull vector
+
+ //
+  // Set up output file
+  //
+  // unsigned int isSig, b_mis, w_mis, wb_mis;
+  float wmva, pttop, mtop, detaj1b, detaj2b, dphij1b, dphij2b, drj1b, drj2b;
+  float bjcsv, j1csv, j2csv;
+  
+  TLorentzVector *bjet=0;
+  TFile *outFile = new TFile(outfilename.c_str(),"RECREATE");
+  TTree *outTree = new TTree("Events","Events");  
+
+  // outTree->Branch("isSig",  &isSig,  "isSig/i");
+  // outTree->Branch("b_mis",  &b_mis,  "b_mis/i");
+  // outTree->Branch("w_mis",  &w_mis,  "w_mis/i");
+  // outTree->Branch("wb_mis", &wb_mis, "wb_mis/i");
+
+  outTree->Branch("wmva",   &wmva,   "wmva/F");
+  outTree->Branch("pttop",  &pttop,  "pttop/F");
+  outTree->Branch("mtop",   &mtop,   "mtop/F");
+  outTree->Branch("detaj1b",&detaj1b,"detaj1b/F");
+  outTree->Branch("detaj2b",&detaj2b,"detaj2b/F");
+  outTree->Branch("dphij1b",&dphij1b,"dphij1b/F");
+  outTree->Branch("dphij2b",&dphij2b,"dphij2b/F");
+  
+  outTree->Branch("drj1b",  &drj1b,  "drj1b/F");
+  outTree->Branch("drj2b",  &drj2b,  "drj2b/F");
+  outTree->Branch("bjcsv",  &bjcsv,  "bjcsv/F");
+  outTree->Branch("j1csv",  &j1csv,  "j1csv/F");
+  outTree->Branch("j2csv",  &j2csv,  "j2csv/F");
+   outTree->Branch("bjet", "TLorentzVector", &bjet);
+
+  // Set up pile-up reweighting
+  TFile puWeightFile(puWeightFilename.c_str());
+  TH1D *hPUWeights = (TH1D*)puWeightFile.Get("pileup");
+  hPUWeights->SetDirectory(0);
+  puWeightFile.Close();
+
+  // set up reader/book mva for WMVA
+  int dummy; 
+  float ptmjj, qjj, pull1ang, pull2ang, qgid1, qgid2, mdrop;
+  TMVA::Reader *reader_lowpt, *reader_highpt;
+  
+  reader_lowpt = new TMVA::Reader("");
+  reader_lowpt->AddSpectator("isSig",  &dummy);
+  reader_lowpt->AddVariable("ptmjj",    &ptmjj);      
+  reader_lowpt->AddVariable("qjj",      &qjj);      
+  reader_lowpt->AddVariable("pull1ang", &pull1ang);      
+  reader_lowpt->AddVariable("pull2ang", &pull2ang);      
+  reader_lowpt->AddVariable("qgid1",    &qgid1);
+  reader_lowpt->AddVariable("qgid2",    &qgid2);
+  reader_lowpt->AddVariable("mdrop",    &mdrop);
+  reader_lowpt->BookMVA("BDTG", weightfile_lowpt.c_str());
+  
+  reader_highpt = new TMVA::Reader("");
+  reader_highpt->AddSpectator("isSig",  &dummy);
+  reader_highpt->AddVariable("ptmjj",    &ptmjj);
+  reader_highpt->AddVariable("qjj",      &qjj);
+  reader_highpt->AddVariable("pull1ang", &pull1ang);
+  reader_highpt->AddVariable("pull2ang", &pull2ang);
+  reader_highpt->AddVariable("qgid1",    &qgid1);
+  reader_highpt->AddVariable("qgid2",    &qgid2);
+  reader_highpt->AddVariable("mdrop",    &mdrop);
+  reader_highpt->BookMVA("BDTG", weightfile_highpt.c_str());
+   
+
+  TFile *infile=0;
+  TTree *intree=0;
+
+  for(unsigned int isam=0; isam<samplev.size(); isam++) {
+    CSample *sample = samplev[isam];
+    cout << "Sample: " << sample->label << endl;
+    bool isData   = (isam==0);
+    bool isSignal = (isam==samplev.size()-1);
+    
+    for(unsigned int ifile=0; ifile<sample->fnamev.size(); ifile++) {
+      string infilename = sample->fnamev[ifile];
+      cout << " ==> Processing " << infilename << "..." << endl;
+      infile = new TFile(infilename.c_str()); assert(infile);
+      intree = (TTree*)infile->Get("Events"); assert(intree);
+
+      intree->SetBranchAddress("runNum",    &runNum);
+      intree->SetBranchAddress("lumiSec",   &lumiSec);
+      intree->SetBranchAddress("evtNum",    &evtNum);
+      intree->SetBranchAddress("metfilter", &metfilter);
+      intree->SetBranchAddress("npv",       &npv);
+      intree->SetBranchAddress("npu",       &npu);
+      intree->SetBranchAddress("njets",     &njets);
+      intree->SetBranchAddress("nbjets",    &nbjets);
+      intree->SetBranchAddress("scale1fb",  &scale1fb);
+      intree->SetBranchAddress("evtWeight", &evtWeight);
+      intree->SetBranchAddress("pfmet",     &pfmet);
+      intree->SetBranchAddress("pfmetphi",  &pfmetphi);
+      intree->SetBranchAddress("pfmt",      &pfmt);
+      intree->SetBranchAddress("mT2W",      &mT2W);
+      intree->SetBranchAddress("lepId",     &lepId);
+      intree->SetBranchAddress("lepton",    &lepton);
+
+      // jet 1 variables
+      intree->SetBranchAddress("jet1flavAlgo", &jet1flavAlgo);
+      intree->SetBranchAddress("jet1flavPhys", &jet1flavPhys);
+      intree->SetBranchAddress("jet1qgid",     &jet1qgid);
+      intree->SetBranchAddress("jet1csv",      &jet1csv);
+      intree->SetBranchAddress("jet1pmass",    &jet1pmass);
+      intree->SetBranchAddress("jet1q",        &jet1q);
+      intree->SetBranchAddress("jet1q03",      &jet1q03);
+      intree->SetBranchAddress("jet1q2",       &jet1q2);
+      intree->SetBranchAddress("jet1ptD",      &jet1ptD);
+      intree->SetBranchAddress("jet1npar",     &jet1npar);
+      intree->SetBranchAddress("jet1",     &jet1vec);
+      intree->SetBranchAddress("jet1pull", &jet1pull);
+      
+      // jet 2 variables
+      intree->SetBranchAddress("jet2flavAlgo", &jet2flavAlgo);
+      intree->SetBranchAddress("jet2flavPhys", &jet2flavPhys);
+      intree->SetBranchAddress("jet2qgid",     &jet2qgid);
+      intree->SetBranchAddress("jet2csv",      &jet2csv);
+      intree->SetBranchAddress("jet2pmass",    &jet2pmass);
+      intree->SetBranchAddress("jet2q",        &jet2q);
+      intree->SetBranchAddress("jet2q03",      &jet2q03);
+      intree->SetBranchAddress("jet2q2",       &jet2q2);
+      intree->SetBranchAddress("jet2ptD",      &jet2ptD);
+      intree->SetBranchAddress("jet2npar",     &jet2npar);
+      intree->SetBranchAddress("jet2",         &jet2vec);
+      intree->SetBranchAddress("jet2pull",     &jet2pull);
+      
+      // jet 3 variables
+      
+      intree->SetBranchAddress("jet3qgid",     &jet3qgid);
+      intree->SetBranchAddress("jet3csv",      &jet3csv);
+      intree->SetBranchAddress("jet3pmass",    &jet3pmass);
+      intree->SetBranchAddress("jet3q",        &jet3q);
+      intree->SetBranchAddress("jet3q03",      &jet3q03);
+      intree->SetBranchAddress("jet3q2",       &jet3q2);
+      intree->SetBranchAddress("jet3ptD",      &jet3ptD);
+      intree->SetBranchAddress("jet3flavAlgo", &jet3flavAlgo);
+      intree->SetBranchAddress("jet3flavPhys", &jet3flavPhys);  
+      intree->SetBranchAddress("jet3npar",     &jet3npar);
+      intree->SetBranchAddress("jet3",      &jet3vec);
+      intree->SetBranchAddress("jet3pull",        &jet3pull);
+      
+      // jet 4 variables
+      
+      intree->SetBranchAddress("jet4qgid",     &jet4qgid);
+      intree->SetBranchAddress("jet4csv",      &jet4csv);
+      intree->SetBranchAddress("jet4pmass",    &jet4pmass);
+      intree->SetBranchAddress("jet4q",        &jet4q);
+      intree->SetBranchAddress("jet4q03",      &jet4q03);
+      intree->SetBranchAddress("jet4q2",       &jet4q2);
+      intree->SetBranchAddress("jet4ptD",      &jet4ptD);
+      intree->SetBranchAddress("jet4flavAlgo", &jet4flavAlgo);
+      intree->SetBranchAddress("jet4flavPhys", &jet4flavPhys);  
+      intree->SetBranchAddress("jet4npar",     &jet4npar);
+      intree->SetBranchAddress("jet4",      &jet4vec);
+      intree->SetBranchAddress("jet4pull",  &jet4pull);
+      
+      for(unsigned int ientry=0; ientry<intree->GetEntries(); ientry++) {
+        intree->GetEntry(ientry);
+        
+        if(metfilter!=0)        continue;
+        if(njets  < NJETS_CUT)  continue;
+        if(nbjets < NBJETS_CUT) continue;
+        if(pfmet  < MET_CUT)    continue;
+
+        double dphi = TMath::Min(fabs(deltaPhi(jet1vec->Phi(),pfmetphi)),fabs(deltaPhi(jet2vec->Phi(),pfmetphi)));
+
+	vector <TLorentzVector> vjet;
+	vjet.push_back(*jet1vec); vjet.push_back(*jet2vec); vjet.push_back(*jet3vec); vjet.push_back(*jet4vec);
+	vector < pair <TLorentzVector, float> > vjetinfo;
+	vjetinfo.push_back(make_pair(*jet1vec,jet1csv));
+	vjetinfo.push_back(make_pair(*jet2vec,jet2csv));
+	vjetinfo.push_back(make_pair(*jet3vec,jet3csv));
+	vjetinfo.push_back(make_pair(*jet4vec,jet4csv));
+	vector < pair <TLorentzVector, TVector2> > vjetpull;
+	vjetpull.push_back(make_pair(*jet1vec,*jet1pull));
+	vjetpull.push_back(make_pair(*jet2vec,*jet2pull));
+	vjetpull.push_back(make_pair(*jet3vec,*jet3pull));
+	vjetpull.push_back(make_pair(*jet4vec,*jet4pull));
+	
+	vector <float> vjetarr[4];
+	vjetarr[0].push_back(jet1csv); vjetarr[0].push_back(jet1q); vjetarr[0].push_back(jet1qgid);
+	vjetarr[1].push_back(jet2csv); vjetarr[1].push_back(jet2q); vjetarr[1].push_back(jet2qgid);
+	vjetarr[2].push_back(jet3csv); vjetarr[2].push_back(jet3q); vjetarr[2].push_back(jet3qgid);
+	vjetarr[3].push_back(jet4csv); vjetarr[3].push_back(jet4q); vjetarr[3].push_back(jet4qgid);
+	
+	TLorentzVector dijet, j1, j2, vtop, vbjet;
+	TVector2 j1pull, j2pull;
+	float j1q, j2q, j1qgid, j2qgid, j1csv, j2csv, bjetcsv;
+	
+	//Look at all dijet combinations
+	for(unsigned int j=0; j < vjet.size(); ++j){
+	  for(unsigned int jj=j+1; jj < vjet.size(); ++jj){
+
+	    TLorentzVector jsum;
+	    jsum = vjet[j]+vjet[jj];
+
+	    //keep j1, j2 if consistent with W mass
+	    if(jsum.M() > WMASSLOW && jsum.M() < WMASSHIGH) {
+	      j1 = vjet[j];
+	      j2 = vjet[jj];
+	      dijet = jsum;
+	      for(unsigned int i=0; i<vjet.size(); ++i){
+		if(j1 == vjetinfo[i].first && j1 == vjetpull[i].first && vjetinfo[i].second == vjetarr[i][0]){
+		  j1csv = vjetarr[i][0];
+		  j1q   = vjetarr[i][1];
+		  j1qgid= vjetarr[i][2];
+		  j1pull= vjetpull[i].second;
+		  
+		} else if(j2 == vjetinfo[i].first && j2 == vjetpull[i].first && vjetinfo[i].second == vjetarr[i][0]){
+		  j2csv = vjetarr[i][0];
+		  j2q   = vjetarr[i][1];
+		  j2qgid= vjetarr[i][2];
+		  j2pull= vjetpull[i].second;
+
+		}
+	      }
+	    }
+	  }
+	}
+
+	// //
+	// // extra cuts
+	// //
+	// if(fabs(j1.Eta())>2.4) continue;
+	// if(fabs(j2.Eta())>2.4) continue;
+	
+	// change coordinates of jet axes for jet pull angle computation
+	TVector2 jet2_in_jet1coord(j2.Rapidity() - j1.Rapidity(), deltaPhi(j2.Phi(),j1.Phi()));
+	TVector2 jet1_in_jet2coord(j1.Rapidity() - j2.Rapidity(), deltaPhi(j1.Phi(),j2.Phi()));
+
+	// input variables for W MVA ID
+	ptmjj    = dijet.Pt()/dijet.M();
+	qjj      = j1q + j2q;
+	pull1ang = j1pull.DeltaPhi(jet2_in_jet1coord);
+	pull2ang = j2pull.DeltaPhi(jet1_in_jet2coord);
+	qgid1    = j1qgid;
+	qgid2    = j2qgid;
+	mdrop    = TMath::Max(j1.M(), j2.M())/dijet.M()*(j1.DeltaR(j2));
+
+	wmva     = (dijet.Pt()<160) ? reader_lowpt->EvaluateMVA("BDTG") : reader_highpt->EvaluateMVA("BDTG");
+	
+	//top
+	for(unsigned int j=0; j<vjet.size(); ++j){
+
+	  if(vjetarr[j][0] > 0.679){
+
+	    if(j1csv != vjetarr[j][0] && j2csv != vjetarr[j][0]){
+
+	      TLorentzVector vsum;
+	      vsum = dijet + vjetinfo[j].first;
+	      
+	      if(vsum.M() >= TOPMASSLOW && vsum.M() <= TOPMASSHIGH){
+		
+		vbjet   = vjetinfo[j].first;
+		bjetcsv = vjetinfo[j].second;
+		vtop    = vsum;
+
+
+		pttop   = vtop.Pt();
+		mtop    = vtop.M();
+		detaj1b = fabs(j1.Eta() - vbjet.Eta());
+		detaj2b = fabs(j2.Eta() - vbjet.Eta());
+		dphij1b = fabs(j1.DeltaPhi(vbjet));
+		dphij2b = fabs(j2.DeltaPhi(vbjet));
+		drj1b   = j1.DeltaR(vbjet);
+		drj2b   = j2.DeltaR(vbjet);
+		bjet    = &vbjet;
+		bjcsv   = bjetcsv;
+		j1csv   = j1csv;
+		j2csv   = j2csv;
+	
+	      }
+	    }
+	  }
+	  
+	}
+	
+	outTree->Fill();
+	
+
+        int ilep=-1;
+        if(abs(lepId)==11) ilep=0;
+        if(abs(lepId)==13) ilep=1;
+
+        double weight = 1;
+        if(!isData) {     
+          weight *= LUMI*scale1fb*evtWeight;
+          weight *= hPUWeights->GetBinContent(hPUWeights->FindBin(npu));
+          if(isam==4) weight *= 0.89; // W+jets SF from AN2014/039
+          if(isam==5) weight *= 1.13; // ttbar SF from AN2014/039
+          if(ilep==0) {
+            weight *= getEleTrgSF(lepton->Pt(), lepton->Eta());
+            weight *= getEleSelSF(lepton->Pt(), lepton->Eta());
+          }
+          if(ilep==1) {
+            weight *= getMuonTrgSF(lepton->Eta()); 
+            weight *= getMuonSelSF(lepton->Eta());
+          }
+        }
+
+        neventsv[ilep][isam]+=weight;
+        hMETv[ilep][isam] ->Fill(TMath::Min((double)pfmet,hMETv[ilep][isam]->GetXaxis()->GetXmax()-1.0), weight);
+        hMTv[ilep][isam]  ->Fill(TMath::Min((double)pfmt,hMTv[ilep][isam]->GetXaxis()->GetXmax()-1.0), weight);
+        hMT2Wv[ilep][isam]->Fill(TMath::Min((double)mT2W,hMT2Wv[ilep][isam]->GetXaxis()->GetXmax()-1.0), weight);
+        hDPhiv[ilep][isam]->Fill(dphi, weight);
+        hNJetsv[ilep][isam]  ->Fill(TMath::Min((double)njets,hNJetsv[ilep][isam]->GetXaxis()->GetXmax()-0.2), weight);
+        hNBJetsv[ilep][isam] ->Fill(TMath::Min((double)nbjets,hNBJetsv[ilep][isam]->GetXaxis()->GetXmax()-0.2), weight);
+        hJet1Etav[ilep][isam]->Fill(jet1vec->Eta(), weight);
+        hJet2Etav[ilep][isam]->Fill(jet2vec->Eta(), weight);
+        hLepEtav[ilep][isam] ->Fill(lepton->Eta(), weight);
+
+        neventsv[2][isam]+=weight;
+        hMETv[2][isam] ->Fill(TMath::Min((double)pfmet,hMETv[2][isam]->GetXaxis()->GetXmax()-1.0), weight);
+        hMTv[2][isam]  ->Fill(TMath::Min((double)pfmt,hMTv[2][isam]->GetXaxis()->GetXmax()-1.0), weight);
+        hMT2Wv[2][isam]->Fill(TMath::Min((double)mT2W,hMT2Wv[2][isam]->GetXaxis()->GetXmax()-1.0), weight);
+        hDPhiv[2][isam]->Fill(dphi, weight);
+        hNJetsv[2][isam]  ->Fill(TMath::Min((double)njets,hNJetsv[2][isam]->GetXaxis()->GetXmax()-0.2), weight);
+        hNBJetsv[2][isam] ->Fill(TMath::Min((double)nbjets,hNBJetsv[2][isam]->GetXaxis()->GetXmax()-0.2), weight);
+        hJet1Etav[2][isam]->Fill(jet1vec->Eta(), weight);
+        hJet2Etav[2][isam]->Fill(jet2vec->Eta(), weight);
+        hLepEtav[2][isam] ->Fill(lepton->Eta(), weight);
+
+        if(!isData && !isSignal) {
+          neventsMC[ilep]+=weight;
+          hMETMC[ilep] ->Fill(TMath::Min((double)pfmet,hMETMC[ilep]->GetXaxis()->GetXmax()-1.0), weight);
+          hMTMC[ilep]  ->Fill(TMath::Min((double)pfmt,hMTMC[ilep]->GetXaxis()->GetXmax()-1.0), weight);
+          hMT2WMC[ilep]->Fill(TMath::Min((double)mT2W,hMT2WMC[ilep]->GetXaxis()->GetXmax()-1.0), weight);
+          hDPhiMC[ilep]->Fill(dphi, weight);
+          hNJetsMC[ilep]  ->Fill(TMath::Min((double)njets,hNJetsMC[ilep]->GetXaxis()->GetXmax()-0.2), weight);
+          hNBJetsMC[ilep] ->Fill(TMath::Min((double)nbjets,hNBJetsMC[ilep]->GetXaxis()->GetXmax()-0.2), weight);
+          hJet1EtaMC[ilep]->Fill(jet1vec->Eta(), weight);
+          hJet2EtaMC[ilep]->Fill(jet2vec->Eta(), weight);
+          hLepEtaMC[ilep] ->Fill(lepton->Eta(), weight);
+
+          neventsMC[2]+=weight;
+          hMETMC[2] ->Fill(TMath::Min((double)pfmet,hMETMC[2]->GetXaxis()->GetXmax()-1.0), weight);
+          hMTMC[2]  ->Fill(TMath::Min((double)pfmt,hMTMC[2]->GetXaxis()->GetXmax()-1.0), weight);
+          hMT2WMC[2]->Fill(TMath::Min((double)mT2W,hMT2WMC[2]->GetXaxis()->GetXmax()-1.0), weight);
+          hDPhiMC[2]->Fill(dphi, weight);
+          hNJetsMC[2]  ->Fill(TMath::Min((double)njets,hNJetsMC[2]->GetXaxis()->GetXmax()-0.2), weight);
+          hNBJetsMC[2] ->Fill(TMath::Min((double)nbjets,hNBJetsMC[2]->GetXaxis()->GetXmax()-0.2), weight);
+          hJet1EtaMC[2]->Fill(jet1vec->Eta(), weight);
+          hJet2EtaMC[2]->Fill(jet2vec->Eta(), weight);
+          hLepEtaMC[2] ->Fill(lepton->Eta(), weight);
+        }
+      }
+      
+      delete infile;
+      infile=0;
+      intree=0;
+    }
+  }
+
+  //
+  // Make ratio histograms
+  //
+  TH1D *hMETRatio[3], *hMTRatio[3], *hMT2WRatio[3], *hDPhiRatio[3];
+  TH1D *hNJetsRatio[3], *hNBJetsRatio[3], *hJet1EtaRatio[3], *hJet2EtaRatio[3], *hLepEtaRatio[3];
+  for(int ilep=0; ilep<3; ilep++) {
+    sprintf(hname,"hMETRatio_%i",ilep);     hMETRatio[ilep]     = makeRatioHist(hMETv[ilep][0],     hMETMC[ilep],     hname);
+    sprintf(hname,"hMTRatio_%i",ilep);      hMTRatio[ilep]      = makeRatioHist(hMTv[ilep][0],      hMTMC[ilep],      hname);
+    sprintf(hname,"hMT2WRatio_%i",ilep);    hMT2WRatio[ilep]    = makeRatioHist(hMT2Wv[ilep][0],    hMT2WMC[ilep],    hname);
+    sprintf(hname,"hDPhiRatio_%i",ilep);    hDPhiRatio[ilep]    = makeRatioHist(hDPhiv[ilep][0],    hDPhiMC[ilep],    hname);
+    sprintf(hname,"hNJetsRatio_%i",ilep);   hNJetsRatio[ilep]   = makeRatioHist(hNJetsv[ilep][0],   hNJetsMC[ilep],   hname);
+    sprintf(hname,"hNBJetsRatio_%i",ilep);  hNBJetsRatio[ilep]  = makeRatioHist(hNBJetsv[ilep][0],  hNBJetsMC[ilep],  hname);
+    sprintf(hname,"hJet1EtaRatio_%i",ilep); hJet1EtaRatio[ilep] = makeRatioHist(hJet1Etav[ilep][0], hJet1EtaMC[ilep], hname);
+    sprintf(hname,"hJet2EtaRatio_%i",ilep); hJet2EtaRatio[ilep] = makeRatioHist(hJet2Etav[ilep][0], hJet2EtaMC[ilep], hname);
+    sprintf(hname,"hLepEtaRatio_%i",ilep);  hLepEtaRatio[ilep]  = makeRatioHist(hLepEtav[ilep][0],  hLepEtaMC[ilep],  hname);
+  }
+
+
+  //--------------------------------------------------------------------------------------------------------------
+  // Make plots
+  //==============================================================================================================
+
+  TCanvas *c = MakeCanvas("c","c",800,800);
+  c->Divide(1,2,0,0);
+  c->cd(1)->SetPad(0,0.3,1.0,1.0);
+  c->cd(1)->SetTopMargin(0.1);
+  c->cd(1)->SetBottomMargin(0.01);
+  c->cd(1)->SetLeftMargin(0.15);
+  c->cd(1)->SetRightMargin(0.07);
+  c->cd(1)->SetTickx(1);
+  c->cd(1)->SetTicky(1);
+  c->cd(2)->SetPad(0,0,1.0,0.3);
+  c->cd(2)->SetTopMargin(0.05);
+  c->cd(2)->SetBottomMargin(0.45);
+  c->cd(2)->SetLeftMargin(0.15);
+  c->cd(2)->SetRightMargin(0.07);
+  c->cd(2)->SetTickx(1);
+  c->cd(2)->SetTicky(1);
+
+  char pname[100];
+  char ylabel[100];
+  string suffix;
+  for(int ilep=0; ilep<3; ilep++) {
+    if(ilep==0) { suffix = "e"; }
+    if(ilep==1) { suffix = "m"; }
+    if(ilep==2) { suffix = "l"; }
+
+    sprintf(pname,"met_%s",suffix.c_str());
+    sprintf(ylabel,"Events / %i GeV",int(hMETv[ilep][0]->GetBinWidth(1)));
+    makePlot(c, pname, "#slash{E}_{T} [GeV]", ylabel, hMETv[ilep], samplev, hMETMC[ilep], hMETRatio[ilep], ilep, LUMI, true, 0.05, -0.03, 2e-2, 2e8);
+
+    sprintf(pname,"mt_%s",suffix.c_str());
+    sprintf(ylabel,"Events / %i GeV",int(hMTv[ilep][0]->GetBinWidth(1)));
+    makePlot(c, pname, "M_{T} [GeV]", ylabel, hMTv[ilep], samplev, hMTMC[ilep], hMTRatio[ilep], ilep, LUMI, true, 0.05, -0.03, 2e-2, 7e7);  
+
+    sprintf(pname,"mt2w_%s",suffix.c_str());
+    sprintf(ylabel,"Events / %i GeV",int(hMT2Wv[ilep][0]->GetBinWidth(1)));
+    makePlot(c, pname, "M_{T2}^{W} [GeV]", ylabel, hMT2Wv[ilep], samplev, hMT2WMC[ilep], hMT2WRatio[ilep], ilep, LUMI, true, 0.05, -0.03, 2e-2, 7e7);
+
+    sprintf(pname,"dphi_%s",suffix.c_str());
+    sprintf(ylabel,"Events / %.1f",hDPhiv[ilep][0]->GetBinWidth(1));
+    makePlot(c, pname, "min #Delta#phi(j_{1,2},#slash{E}_{T})", ylabel, hDPhiv[ilep], samplev, hDPhiMC[ilep], hDPhiRatio[ilep], ilep, LUMI, true, 0.05, -0.03, 2e-2, 7e9);
+
+    sprintf(pname,"njets_%s",suffix.c_str());
+    makePlot(c, pname, "Number of jets", "Events", hNJetsv[ilep], samplev, hNJetsMC[ilep], hNJetsRatio[ilep], ilep, LUMI, true, 0.05, -0.03, 2e-2, 2e9);
+
+    sprintf(pname,"nbjets_%s",suffix.c_str());
+    makePlot(c, pname, "Number of b-tagged jets", "Events", hNBJetsv[ilep], samplev, hNBJetsMC[ilep], hNBJetsRatio[ilep], ilep, LUMI, true, 0.05, -0.03, 2e-2, 3e9);
+
+    sprintf(pname,"jet1eta_%s",suffix.c_str());
+    sprintf(ylabel,"Events / %0.1f",hJet1Etav[ilep][0]->GetBinWidth(1));
+    makePlot(c, pname, "Leading jet #eta", ylabel, hJet1Etav[ilep], samplev, hJet1EtaMC[ilep], hJet1EtaRatio[ilep], ilep, LUMI, true, 0.05, -0.03, 2e-2, 3e9);
+
+    sprintf(pname,"jet2eta_%s",suffix.c_str());
+    sprintf(ylabel,"Events / %0.1f",hJet2Etav[ilep][0]->GetBinWidth(1));
+    makePlot(c, pname, "Sub-leading jet #eta", ylabel, hJet2Etav[ilep], samplev, hJet2EtaMC[ilep], hJet2EtaRatio[ilep], ilep, LUMI, true, 0.05, -0.03, 2e-2, 3e9);
+
+    sprintf(pname,"lepeta_%s",suffix.c_str());
+    sprintf(ylabel,"Events / %0.1f",hLepEtav[ilep][0]->GetBinWidth(1));
+    makePlot(c, pname, "Lepton #eta", ylabel, hLepEtav[ilep], samplev, hLepEtaMC[ilep], hLepEtaRatio[ilep], ilep, LUMI, true, 0.05, -0.03, 2e-2, 4e8);
+  }
+
+
+  //--------------------------------------------------------------------------------------------------------------
+  // Output
+  //==============================================================================================================
+   
+  cout << "*" << endl;
+  cout << "* SUMMARY" << endl;
+  cout << "*--------------------------------------------------" << endl;
+  cout << endl;
+
+  for(unsigned int isam=1; isam<samplev.size()-1; isam++) {
+    cout << "  * " << setw(10) << samplev[isam]->label;
+    for(int ilep=0; ilep<3; ilep++) {
+      cout << setprecision(2) << fixed << setw(10) << neventsv[ilep][isam];
+    }
+    cout << endl;
+  }
+  cout << "  ============" << endl;
+  cout << "    " << setw(10) << "total bkg";
+  for(int ilep=0; ilep<3; ilep++) {
+    cout << setprecision(2) << fixed << setw(10) << neventsMC[ilep];
+  }
+  cout << endl;
+  cout << "    " << setw(10) << "observed";
+  for(int ilep=0; ilep<3; ilep++) {
+    cout << setprecision(2) << fixed << setw(10) << neventsv[ilep][0];
+  }
+  cout << endl;
+  cout << "    " << setw(10) << samplev.back()->label;
+  for(int ilep=0; ilep<3; ilep++) {
+    cout << setprecision(2) << fixed << setw(10) << neventsv[ilep][samplev.size()-1];
+  }
+  cout << endl;
+
+  cout << endl;
+  cout << " <> Output saved in " << outputDir << "/" << endl;
+  cout << endl; 
+
+
+  outFile->Write();
+  outFile->Close();
+}
+
+//=== FUNCTION DEFINITIONS ======================================================================================
+
+//--------------------------------------------------------------------------------------------------
+void makePlot(TCanvas *c, const string outname, const string xlabel, const string ylabel,
+              const vector<TH1D*>& histv, const vector<CSample*>& samplev, TH1D* hExp, TH1D* hRatio,
+              const int ilep, const double lumi, const bool doLogy, const double legdx, const double legdy,
+              const double ymin, const double ymax)
+{
+  const int uncColor = kGray+3;
+  
+  histv[0]->SetMarkerSize(0.9);
+  
+  CPlot plot(outname.c_str(),"",xlabel.c_str(),ylabel.c_str());  
+  plot.AddHist1D(hExp,"E2",uncColor,1,3004);
+  plot.AddHist1D(histv[0],samplev[0]->label,"E");
+  for(unsigned int i=1; i<histv.size()-1; i++) {
+    plot.AddToStack(histv[i],samplev[i]->label,samplev[i]->fillcolor,samplev[i]->linecolor);
+  }
+  plot.AddHist1D(histv.back(),samplev.back()->label,"hist",samplev.back()->linecolor);
+  
+  char lumitext[100];
+  sprintf(lumitext,"%.1f fb^{-1} (8 TeV)",lumi);
+  plot.AddTextBox(lumitext,0.66,0.99,0.95,0.925,0,kBlack);
+  plot.AddTextBox("CMS",0.18,0.88,0.30,0.82,0,kBlack,62);
+  plot.AddTextBox("Preliminary",0.18,0.82,0.37,0.77,0,kBlack,52);
+  
+  plot.TransLegend(legdx, legdy);
+  
+  if(doLogy) {
+    plot.SetLogy();
+  }
+  
+  if(ymin!=ymax) {
+    plot.SetYRange(ymin,ymax);
+  }
+
+  if(ilep==0) plot.AddTextBox("e channel",0.20,0.99,0.37,0.925,0,kBlack);
+  if(ilep==1) plot.AddTextBox("#mu channel",0.20,0.99,0.37,0.925,0,kBlack);
+
+  hRatio->SetMarkerSize(0.8);  
+  const double xmin = histv[0]->GetXaxis()->GetBinLowEdge(1);
+  const double xmax = histv[0]->GetXaxis()->GetBinUpEdge(histv[0]->GetNbinsX());
+  CPlot plotRatio(outname.c_str(),"",xlabel.c_str(),"Data/Bkg");
+  plotRatio.AddHist1D(hRatio,"EX0",kBlack);
+  plotRatio.SetYRange(0,2);
+  plotRatio.AddLine(xmin,1.5,xmax,1.5,kBlack,3);
+  plotRatio.AddLine(xmin,1.0,xmax,1.0,kBlack,3);
+  plotRatio.AddLine(xmin,0.5,xmax,0.5,kBlack,3);
+
+  plot.Draw(c,false,"png",1);
+  plotRatio.Draw(c,true,"png",2);
+//  plotRatio.Draw(c,true,"pdf",2);
+}
+
+//--------------------------------------------------------------------------------------------------
+TH1D* makeRatioHist(TH1D* hData, TH1D* hMC, const string name)
+{
+  TH1D *hRatio = new TH1D(name.c_str(),"",hData->GetNbinsX(),hData->GetXaxis()->GetXmin(),hData->GetXaxis()->GetXmax());
+  for(Int_t ibin=1; ibin<=hData->GetNbinsX(); ibin++) {
+    double numer = hData->GetBinContent(ibin);
+    double denom = hMC->GetBinContent(ibin);
+    double ratio = (denom>0) ? numer/denom : 0;
+    
+    double errn = hData->GetBinError(ibin);
+    double errd = hMC->GetBinError(ibin);        
+    double err = (denom>0 && numer>0) ? ratio*sqrt(errn*errn/numer/numer + errd*errd/denom/denom) : 0;
+                        
+    hRatio->SetBinContent(ibin,ratio);
+    hRatio->SetBinError(ibin,err);
+  }
+  hRatio->GetYaxis()->SetTitleOffset(0.42);
+  hRatio->GetYaxis()->SetTitleSize(0.13);
+  hRatio->GetYaxis()->SetLabelSize(0.10);
+  hRatio->GetYaxis()->SetNdivisions(104);
+  hRatio->GetYaxis()->CenterTitle();
+  hRatio->GetXaxis()->SetTitleOffset(1.2);
+  hRatio->GetXaxis()->SetTitleSize(0.13);
+  hRatio->GetXaxis()->SetLabelSize(0.12);
+  //hRatio->GetXaxis()->CenterTitle();
+
+  return hRatio;
+}
+
+//--------------------------------------------------------------------------------------------------
+double getEleTrgSF(const double pt, const double eta)
+{
+  if(pt>30 && pt<40) {
+    if     (fabs(eta) < 0.8)    { return 0.9753; }
+    else if(fabs(eta) < 1.4442) { return 0.9690; }
+    else if(fabs(eta) < 1.566)  { return 0.9635; }
+    else if(fabs(eta) < 2.0)    { return 1.0122; }
+    else if(fabs(eta) < 2.5)    { return 1.0099; }
+
+  } else if(pt<50) {
+    if     (fabs(eta) < 0.8)    { return 0.9860; }
+    else if(fabs(eta) < 1.4442) { return 0.9836; }
+    else if(fabs(eta) < 1.566 ) { return 0.9811; }
+    else if(fabs(eta) < 2.0)    { return 1.0186; }
+    else if(fabs(eta) < 2.5)    { return 1.0109; }
+
+  } else if(pt<200) {
+    if     (fabs(eta) < 0.8)    { return 0.9901; }
+    else if(fabs(eta) < 1.4442) { return 0.9907; }
+    else if(fabs(eta) < 1.566)  { return 1.0056; }
+    else if(fabs(eta) < 2.0)    { return 1.0350; }
+    else if(fabs(eta) < 2.5)    { return 1.0115; }
+  }
+
+  return 1;
+}
+
+double getEleSelSF(const double pt, const double eta)
+{
+  if(pt>30 && pt<40) {
+    if     (fabs(eta) < 0.8)    { return 0.978; }
+    else if(fabs(eta) < 1.4442) { return 0.958; }
+    else if(fabs(eta) < 1.566)  { return 0.907; }
+    else if(fabs(eta) < 2.0)    { return 0.909; }
+    else if(fabs(eta) < 2.5)    { return 0.987; }
+
+  } else if(pt<50) {
+    if     (fabs(eta) < 0.8)    { return 0.981; }
+    else if(fabs(eta) < 1.4442) { return 0.969; }
+    else if(fabs(eta) < 1.566 ) { return 0.904; }
+    else if(fabs(eta) < 2.0)    { return 0.942; }
+    else if(fabs(eta) < 2.5)    { return 0.991; }
+
+  } else {
+    if     (fabs(eta) < 0.8)    { return 0.982; }
+    else if(fabs(eta) < 1.4442) { return 0.969; }
+    else if(fabs(eta) < 1.566)  { return 0.926; }
+    else if(fabs(eta) < 2.0)    { return 0.957; }
+    else if(fabs(eta) < 2.5)    { return 0.999; }
+  }
+
+  return 1;
+}
+
+double getMuonTrgSF(const double eta)
+{
+  if     (fabs(eta)<0.9) { return 0.9837; }
+  else if(fabs(eta)<1.2) { return 0.9656; }
+  else if(fabs(eta)<2.1) { return 0.9962; }
+
+  return 0;
+}
+
+double getMuonSelSF(const double eta)
+{
+  if     (fabs(eta)<0.9) { return 0.9884; }
+  else if(fabs(eta)<1.2) { return 0.9807; }
+  else if(fabs(eta)<2.1) { return 0.9987; }
+  else if(fabs(eta)<2.4) { return 1.0582; }
+
+  return 1;
+}
